@@ -349,11 +349,11 @@ class _TaggableManager(models.Manager):
 
         results = []
         for result in qs:
-            obj = items[
-                tuple(result[k] for k in lookup_keys)
-            ]
-            obj.similar_tags = result["n"]
-            results.append(obj)
+            taggeditem_key = tuple(result[k] for k in lookup_keys)
+            if taggeditem_key in items:
+                obj = items[taggeditem_key]
+                obj.similar_tags = result["n"]
+                results.append(obj)
         return results
 
 
