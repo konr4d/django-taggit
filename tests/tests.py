@@ -1,17 +1,15 @@
 from __future__ import absolute_import, unicode_literals
 
-from unittest import TestCase as UnitTestCase
+import unittest
 
 import mock
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.exceptions import ValidationError
-from django.core.management import call_command
 from django.db import connection, models
-from django.test import RequestFactory, TestCase, TransactionTestCase
+from django.test import RequestFactory, TestCase
 from django.test.utils import override_settings
 from django.utils.encoding import force_text
-from django.views.generic.list import ListView
 
 from .forms import (CustomPKFoodForm, DirectCustomPKFoodForm, DirectFoodForm,
                     FoodForm, OfficialFoodForm)
@@ -26,10 +24,10 @@ from .models import (Article, Child, CustomManager, CustomPKFood,
 from taggit.managers import TaggableManager, _TaggableManager
 from taggit.models import Tag, TaggedItem
 from taggit.utils import edit_string_for_tags, parse_tags
-from taggit.views import TagListMixin, tagged_object_list
+from taggit.views import tagged_object_list
 
 
-class BaseTaggingTest(object):
+class BaseTaggingTestCase(TestCase):
     def assert_tags_equal(self, qs, tags, sort=True, attr="name"):
         got = [getattr(obj, attr) for obj in qs]
         if sort:
@@ -37,27 +35,8 @@ class BaseTaggingTest(object):
             tags.sort()
         self.assertEqual(got, tags)
 
-    def _get_form_str(self, form_str):
-        form_str %= {
-            "help_start": '<span class="helptext">',
-            "help_stop": "</span>",
-            "required": "required",
-        }
-        return form_str
 
-    def assertFormRenders(self, form, html):
-        self.assertHTMLEqual(str(form), self._get_form_str(html))
-
-
-class BaseTaggingTestCase(TestCase, BaseTaggingTest):
-    pass
-
-
-class BaseTaggingTransactionTestCase(TransactionTestCase, BaseTaggingTest):
-    pass
-
-
-class TagModelTestCase(BaseTaggingTransactionTestCase):
+class TagModelTestCase(BaseTaggingTestCase):
     food_model = Food
     tag_model = Tag
 
@@ -94,14 +73,14 @@ class TagModelTestCase(BaseTaggingTransactionTestCase):
     def test_gt(self):
         high = self.tag_model.objects.create(name='high')
         low = self.tag_model.objects.create(name='Low')
-        self.assertTrue(low > high)
-        self.assertFalse(high > low)
+        self.assertIs(low > high, True)
+        self.assertIs(high > low, False)
 
     def test_lt(self):
         high = self.tag_model.objects.create(name='high')
         low = self.tag_model.objects.create(name='Low')
-        self.assertTrue(high < low)
-        self.assertFalse(low < high)
+        self.assertIs(high < low, True)
+        self.assertIs(low < high, False)
 
 
 class TagModelDirectTestCase(TagModelTestCase):
@@ -122,6 +101,11 @@ class TagModelCustomPKTestCase(TagModelTestCase):
 class TagModelOfficialTestCase(TagModelTestCase):
     food_model = OfficialFood
     tag_model = OfficialTag
+
+
+class TagUUIDModelTestCase(TagModelTestCase):
+    food_model = UUIDFood
+    tag_model = UUIDTag
 
 
 class TaggableManagerTestCase(BaseTaggingTestCase):
@@ -180,7 +164,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 2)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_add',
+                action='pre_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green_pk},
@@ -188,7 +172,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_add',
+                action='post_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green_pk},
@@ -206,7 +190,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 2)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_add',
+                action='pre_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green.pk},
@@ -214,7 +198,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_add',
+                action='post_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green.pk},
@@ -234,7 +218,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 2)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_add',
+                action='pre_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green.pk},
@@ -242,7 +226,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_add',
+                action='post_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green.pk},
@@ -263,7 +247,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 2)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_remove',
+                action='pre_remove',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green_pk},
@@ -271,7 +255,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_remove',
+                action='post_remove',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green_pk},
@@ -290,7 +274,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 2)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_clear',
+                action='pre_clear',
                 instance=apple,
                 model=self.tag_model,
                 pk_set=None,
@@ -298,7 +282,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_clear',
+                action='post_clear',
                 instance=apple,
                 model=self.tag_model,
                 pk_set=None,
@@ -321,7 +305,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 4)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_clear',
+                action='pre_clear',
                 instance=apple,
                 model=self.tag_model,
                 pk_set=None,
@@ -329,7 +313,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_clear',
+                action='post_clear',
                 instance=apple,
                 model=self.tag_model,
                 pk_set=None,
@@ -337,7 +321,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'pre_add',
+                action='pre_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={red_pk},
@@ -345,7 +329,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_add',
+                action='post_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={red_pk},
@@ -368,7 +352,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
         self.assertEqual(send_mock.call_count, 4)
         send_mock.assert_has_calls([
             mock.call(
-                action=u'pre_remove',
+                action='pre_remove',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green_pk},
@@ -376,7 +360,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_remove',
+                action='post_remove',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={green_pk},
@@ -384,7 +368,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'pre_add',
+                action='pre_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={red_pk},
@@ -392,7 +376,7 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                 sender=self.taggeditem_model,
                 using='default'),
             mock.call(
-                action=u'post_add',
+                action='post_add',
                 instance=apple,
                 model=self.tag_model,
                 pk_set={red_pk},
@@ -490,27 +474,6 @@ class TaggableManagerTestCase(BaseTaggingTestCase):
                                  ['<{0}: kitty>'.format(model_name),
                                   '<{0}: cat>'.format(model_name)],
                                  ordered=False)
-
-    def test_lookup_bulk(self):
-        apple = self.food_model.objects.create(name="apple")
-        pear = self.food_model.objects.create(name="pear")
-        apple.tags.add('fruit', 'green')
-        pear.tags.add('fruit', 'yummie')
-
-        def lookup_qs():
-            # New fix: directly allow WHERE object_id IN (SELECT id FROM ..)
-            objects = self.food_model.objects.all()
-            lookup = self.taggeditem_model.bulk_lookup_kwargs(objects)
-            list(self.taggeditem_model.objects.filter(**lookup))
-
-        def lookup_list():
-            # Simulate old situation: iterate over a list.
-            objects = list(self.food_model.objects.all())
-            lookup = self.taggeditem_model.bulk_lookup_kwargs(objects)
-            list(self.taggeditem_model.objects.filter(**lookup))
-
-        self.assertNumQueries(1, lookup_qs)
-        self.assertNumQueries(2, lookup_list)
 
     def test_exclude(self):
         apple = self.food_model.objects.create(name="apple")
@@ -768,6 +731,17 @@ class TaggableFormTestCase(BaseTaggingTestCase):
     form_class = FoodForm
     food_model = Food
 
+    def _get_form_str(self, form_str):
+        form_str %= {
+            "help_start": '<span class="helptext">',
+            "help_stop": "</span>",
+            "required": "required",
+        }
+        return form_str
+
+    def assertFormRenders(self, form, html):
+        self.assertHTMLEqual(str(form), self._get_form_str(html))
+
     def test_form(self):
         self.assertEqual(list(self.form_class.base_fields), ['name', 'tags'])
 
@@ -835,7 +809,7 @@ class TaggableFormOfficialTestCase(TaggableFormTestCase):
     food_model = OfficialFood
 
 
-class TagStringParseTestCase(UnitTestCase):
+class TagStringParseTestCase(unittest.TestCase):
     """
     Ported from Jonathan Buchanan's `django-tagging
     <http://django-tagging.googlecode.com/>`_
@@ -934,7 +908,7 @@ class TagStringParseTestCase(UnitTestCase):
         self.assertEqual(edit_string_for_tags([a, b]), 'Cued Speech, transliterator')
 
 
-class DeconstructTestCase(UnitTestCase):
+class DeconstructTestCase(unittest.TestCase):
     def test_deconstruct_kwargs_kept(self):
         instance = TaggableManager(through=OfficialThroughModel, to='dummy.To')
         name, path, args, kwargs = instance.deconstruct()
@@ -959,21 +933,11 @@ class InheritedPrefetchTests(TestCase):
         self.assertEqual({t.name for t in no_prefetch_tags}, {t.name for t in prefetch_tags})
 
 
-class DjangoCheckTests(UnitTestCase):
-
-    def test_django_checks(self):
-        call_command('check', tag=['models'])
-
-
-class FoodTagListView(TagListMixin, ListView):
-    model = Food
-
-
-@override_settings(ROOT_URLCONF='tests.urls')
-class TagListViewTests(BaseTaggingTestCase, TestCase):
+class TagListViewTests(TestCase):
     model = Food
 
     def setUp(self):
+        super(TagListViewTests, self).setUp()
         self.factory = RequestFactory()
         self.slug = 'green'
         self.apple = self.model.objects.create(name='apple')
@@ -998,8 +962,3 @@ class TagListViewTests(BaseTaggingTestCase, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.apple, response.context_data['object_list'])
         self.assertNotIn(self.strawberry, response.context_data['object_list'])
-
-
-class TagUUIDModelTestCase(TagModelTestCase):
-    food_model = UUIDFood
-    tag_model = UUIDTag

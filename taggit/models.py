@@ -2,10 +2,9 @@ from __future__ import unicode_literals
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.db import IntegrityError, models, transaction
-from django.db.models.query import QuerySet
-from django.template.defaultfilters import slugify as default_slugify
+from django.db import IntegrityError, models, router, transaction
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.text import slugify
 from django.utils.translation import ugettext
 from django.utils.translation import ugettext_lazy as _
 
@@ -36,7 +35,6 @@ class TagBase(models.Model):
     def save(self, *args, **kwargs):
         if self._state.adding and not self.slug:
             self.slug = self.slugify(self.name)
-            from django.db import router
             using = kwargs.get("using") or router.db_for_write(
                 type(self), instance=self)
             # Make sure we write to the same db for all attempted writes,
@@ -70,7 +68,7 @@ class TagBase(models.Model):
             return super(TagBase, self).save(*args, **kwargs)
 
     def slugify(self, tag, i=None):
-        slug = default_slugify(unidecode(tag))
+        slug = slugify(unidecode(tag))
         if i is not None:
             slug += "_%d" % i
         return slug
@@ -108,12 +106,6 @@ class ItemBase(models.Model):
     def lookup_kwargs(cls, instance):
         return {
             'content_object': instance
-        }
-
-    @classmethod
-    def bulk_lookup_kwargs(cls, instances):
-        return {
-            "content_object__in": instances,
         }
 
 
@@ -155,21 +147,6 @@ class CommonGenericTaggedItemBase(ItemBase):
             'object_id': instance.pk,
             'content_type': ContentType.objects.get_for_model(instance)
         }
-
-    @classmethod
-    def bulk_lookup_kwargs(cls, instances):
-        if isinstance(instances, QuerySet):
-            # Can do a real object_id IN (SELECT ..) query.
-            return {
-                "object_id__in": instances,
-                "content_type": ContentType.objects.get_for_model(instances.model),
-            }
-        else:
-            # TODO: instances[0], can we assume there are instances.
-            return {
-                "object_id__in": [instance.pk for instance in instances],
-                "content_type": ContentType.objects.get_for_model(instances[0]),
-            }
 
     @classmethod
     def tags_for(cls, model, instance=None, **extra_filters):
