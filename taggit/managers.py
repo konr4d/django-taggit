@@ -1,6 +1,3 @@
-from __future__ import unicode_literals
-
-from functools import total_ordering
 from operator import attrgetter
 
 from django import VERSION
@@ -9,23 +6,26 @@ from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.db import connections, models, router
 from django.db.models import signals
-from django.db.models.fields.related import (ManyToManyRel, OneToOneRel,
-                                             RelatedField,
-                                             lazy_related_operation)
+from django.db.models.fields.related import (
+    ManyToManyRel,
+    OneToOneRel,
+    RelatedField,
+    lazy_related_operation,
+)
 from django.db.models.query_utils import PathInfo
-from django.utils import six
 from django.utils.text import capfirst
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from taggit.forms import TagField
 from taggit.models import CommonGenericTaggedItemBase, TaggedItem
 from taggit.utils import require_instance_manager
 
 
-class ExtraJoinRestriction(object):
+class ExtraJoinRestriction:
     """
     An extra restriction used for contenttype restriction in joins.
     """
+
     contains_aggregate = False
 
     def __init__(self, alias, col, content_types):
@@ -36,10 +36,11 @@ class ExtraJoinRestriction(object):
     def as_sql(self, compiler, connection):
         qn = compiler.quote_name_unless_alias
         if len(self.content_types) == 1:
-            extra_where = "%s.%s = %%s" % (qn(self.alias), qn(self.col))
+            extra_where = "{}.{} = %s".format(qn(self.alias), qn(self.col))
         else:
-            extra_where = "%s.%s IN (%s)" % (qn(self.alias), qn(self.col),
-                                             ','.join(['%s'] * len(self.content_types)))
+            extra_where = "{}.{} IN ({})".format(
+                qn(self.alias), qn(self.col), ",".join(["%s"] * len(self.content_types))
+            )
         return extra_where, self.content_types
 
     def relabel_aliases(self, change_map):
@@ -51,7 +52,7 @@ class ExtraJoinRestriction(object):
 
 class _TaggableManager(models.Manager):
     def __init__(self, through, model, instance, prefetch_cache_name):
-        super(_TaggableManager, self).__init__()
+        super().__init__()
         self.through = through
         self.model = model
         self.instance = instance
@@ -74,25 +75,37 @@ class _TaggableManager(models.Manager):
         instance = instances[0]
         db = self._db or router.db_for_read(instance.__class__, instance=instance)
 
-        fieldname = ('object_id' if issubclass(self.through, CommonGenericTaggedItemBase)
-                     else 'content_object')
+        fieldname = (
+            "object_id"
+            if issubclass(self.through, CommonGenericTaggedItemBase)
+            else "content_object"
+        )
         fk = self.through._meta.get_field(fieldname)
         query = {
-            '%s__%s__in' % (self.through.tag_relname(), fk.name): {obj._get_pk_val() for obj in instances}
+            "%s__%s__in"
+            % (self.through.tag_relname(), fk.name): {
+                obj._get_pk_val() for obj in instances
+            }
         }
         join_table = self.through._meta.db_table
         source_col = fk.column
         connection = connections[db]
         qn = connection.ops.quote_name
-        qs = self.get_queryset(query).using(db).extra(
-            select={
-                '_prefetch_related_val': '%s.%s' % (qn(join_table), qn(source_col))
-            }
+        qs = (
+            self.get_queryset(query)
+            .using(db)
+            .extra(
+                select={
+                    "_prefetch_related_val": "{}.{}".format(
+                        qn(join_table), qn(source_col)
+                    )
+                }
+            )
         )
         if VERSION < (2, 0):
             return (
                 qs,
-                attrgetter('_prefetch_related_val'),
+                attrgetter("_prefetch_related_val"),
                 lambda obj: obj._get_pk_val(),
                 False,
                 self.prefetch_cache_name,
@@ -100,7 +113,7 @@ class _TaggableManager(models.Manager):
         else:
             return (
                 qs,
-                attrgetter('_prefetch_related_val'),
+                attrgetter("_prefetch_related_val"),
                 lambda obj: obj._get_pk_val(),
                 False,
                 self.prefetch_cache_name,
@@ -119,26 +132,37 @@ class _TaggableManager(models.Manager):
 
         # NOTE: can we hardcode 'tag_id' here or should the column name be got
         # dynamically from somewhere?
-        vals = (self.through._default_manager.using(db)
-                .values_list('tag_id', flat=True)
-                .filter(**self._lookup_kwargs()))
+        vals = (
+            self.through._default_manager.using(db)
+            .values_list("tag_id", flat=True)
+            .filter(**self._lookup_kwargs())
+        )
 
         new_ids = new_ids - set(vals)
 
         signals.m2m_changed.send(
-            sender=self.through, action="pre_add",
-            instance=self.instance, reverse=False,
-            model=self.through.tag_model(), pk_set=new_ids, using=db,
+            sender=self.through,
+            action="pre_add",
+            instance=self.instance,
+            reverse=False,
+            model=self.through.tag_model(),
+            pk_set=new_ids,
+            using=db,
         )
 
         for tag in tag_objs:
             self.through._default_manager.using(db).get_or_create(
-                tag=tag, **self._lookup_kwargs())
+                tag=tag, **self._lookup_kwargs()
+            )
 
         signals.m2m_changed.send(
-            sender=self.through, action="post_add",
-            instance=self.instance, reverse=False,
-            model=self.through.tag_model(), pk_set=new_ids, using=db,
+            sender=self.through,
+            action="post_add",
+            instance=self.instance,
+            reverse=False,
+            model=self.through.tag_model(),
+            pk_set=new_ids,
+            using=db,
         )
 
     def _to_tag_model_instances(self, tags):
@@ -154,14 +178,16 @@ class _TaggableManager(models.Manager):
         for t in tags:
             if isinstance(t, self.through.tag_model()):
                 tag_objs.add(t)
-            elif isinstance(t, six.string_types):
+            elif isinstance(t, str):
                 str_tags.add(t)
             else:
                 raise ValueError(
-                    "Cannot add {0} ({1}). Expected {2} or str.".format(
-                        t, type(t), type(self.through.tag_model())))
+                    "Cannot add {} ({}). Expected {} or str.".format(
+                        t, type(t), type(self.through.tag_model())
+                    )
+                )
 
-        case_insensitive = getattr(settings, 'TAGGIT_CASE_INSENSITIVE', False)
+        case_insensitive = getattr(settings, "TAGGIT_CASE_INSENSITIVE", False)
         manager = self.through.tag_model()._default_manager.using(db)
 
         if case_insensitive:
@@ -186,12 +212,11 @@ class _TaggableManager(models.Manager):
 
         for new_tag in tags_to_create:
             if case_insensitive:
-                try:
-                    tag = manager.get(name__iexact=new_tag)
-                except self.through.tag_model().DoesNotExist:
-                    tag = manager.create(name=new_tag)
+                tag, created = manager.get_or_create(
+                    name__iexact=new_tag, defaults={"name": new_tag}
+                )
             else:
-                tag = manager.create(name=new_tag)
+                tag, created = manager.get_or_create(name=new_tag)
 
             tag_objs.add(tag)
 
@@ -199,11 +224,11 @@ class _TaggableManager(models.Manager):
 
     @require_instance_manager
     def names(self):
-        return self.get_queryset().values_list('name', flat=True)
+        return self.get_queryset().values_list("name", flat=True)
 
     @require_instance_manager
     def slugs(self):
-        return self.get_queryset().values_list('slug', flat=True)
+        return self.get_queryset().values_list("slug", flat=True)
 
     @require_instance_manager
     def set(self, *tags, **kwargs):
@@ -214,7 +239,7 @@ class _TaggableManager(models.Manager):
         removed and any new tags added.
         """
         db = router.db_for_write(self.through, instance=self.instance)
-        clear = kwargs.pop('clear', False)
+        clear = kwargs.pop("clear", False)
 
         if clear:
             self.clear()
@@ -224,10 +249,11 @@ class _TaggableManager(models.Manager):
             objs = self._to_tag_model_instances(tags)
 
             # get the existing tag strings
-            old_tag_strs = set(self.through._default_manager
-                               .using(db)
-                               .filter(**self._lookup_kwargs())
-                               .values_list('tag__name', flat=True))
+            old_tag_strs = set(
+                self.through._default_manager.using(db)
+                .filter(**self._lookup_kwargs())
+                .values_list("tag__name", flat=True)
+            )
 
             new_objs = []
             for obj in objs:
@@ -246,22 +272,32 @@ class _TaggableManager(models.Manager):
 
         db = router.db_for_write(self.through, instance=self.instance)
 
-        qs = (self.through._default_manager.using(db)
-              .filter(**self._lookup_kwargs())
-              .filter(tag__name__in=tags))
+        qs = (
+            self.through._default_manager.using(db)
+            .filter(**self._lookup_kwargs())
+            .filter(tag__name__in=tags)
+        )
 
-        old_ids = set(qs.values_list('tag_id', flat=True))
+        old_ids = set(qs.values_list("tag_id", flat=True))
 
         signals.m2m_changed.send(
-            sender=self.through, action="pre_remove",
-            instance=self.instance, reverse=False,
-            model=self.through.tag_model(), pk_set=old_ids, using=db,
+            sender=self.through,
+            action="pre_remove",
+            instance=self.instance,
+            reverse=False,
+            model=self.through.tag_model(),
+            pk_set=old_ids,
+            using=db,
         )
         qs.delete()
         signals.m2m_changed.send(
-            sender=self.through, action="post_remove",
-            instance=self.instance, reverse=False,
-            model=self.through.tag_model(), pk_set=old_ids, using=db,
+            sender=self.through,
+            action="post_remove",
+            instance=self.instance,
+            reverse=False,
+            model=self.through.tag_model(),
+            pk_set=old_ids,
+            using=db,
         )
 
     @require_instance_manager
@@ -269,24 +305,33 @@ class _TaggableManager(models.Manager):
         db = router.db_for_write(self.through, instance=self.instance)
 
         signals.m2m_changed.send(
-            sender=self.through, action="pre_clear",
-            instance=self.instance, reverse=False,
-            model=self.through.tag_model(), pk_set=None, using=db,
+            sender=self.through,
+            action="pre_clear",
+            instance=self.instance,
+            reverse=False,
+            model=self.through.tag_model(),
+            pk_set=None,
+            using=db,
         )
 
-        self.through._default_manager.using(db).filter(
-            **self._lookup_kwargs()).delete()
+        self.through._default_manager.using(db).filter(**self._lookup_kwargs()).delete()
 
         signals.m2m_changed.send(
-            sender=self.through, action="post_clear",
-            instance=self.instance, reverse=False,
-            model=self.through.tag_model(), pk_set=None, using=db,
+            sender=self.through,
+            action="post_clear",
+            instance=self.instance,
+            reverse=False,
+            model=self.through.tag_model(),
+            pk_set=None,
+            using=db,
         )
 
     def most_common(self, min_count=None, extra_filters=None):
-        queryset = self.get_queryset(extra_filters).annotate(
-            num_times=models.Count(self.through.tag_relname())
-        ).order_by('-num_times')
+        queryset = (
+            self.get_queryset(extra_filters)
+            .annotate(num_times=models.Count(self.through.tag_relname()))
+            .order_by("-num_times")
+        )
         if min_count:
             queryset = queryset.filter(num_times__gte=min_count)
 
@@ -296,11 +341,11 @@ class _TaggableManager(models.Manager):
     def similar_objects(self):
         lookup_kwargs = self._lookup_kwargs()
         lookup_keys = sorted(lookup_kwargs)
-        qs = self.through.objects.values(*six.iterkeys(lookup_kwargs))
-        qs = qs.annotate(n=models.Count('pk'))
+        qs = self.through.objects.values(*lookup_kwargs.keys())
+        qs = qs.annotate(n=models.Count("pk"))
         qs = qs.exclude(**lookup_kwargs)
         qs = qs.filter(tag__in=self.all())
-        qs = qs.order_by('-n')
+        qs = qs.order_by("-n")
 
         # TODO: This all feels like a bit of a hack.
         items = {}
@@ -310,15 +355,18 @@ class _TaggableManager(models.Manager):
             f = self.through._meta.get_field(lookup_keys[0])
             remote_field = f.remote_field
             rel_model = remote_field.model
-            objs = rel_model._default_manager.filter(**{
-                "%s__in" % remote_field.field_name: [r["content_object"] for r in qs]
-            })
+            objs = rel_model._default_manager.filter(
+                **{
+                    "%s__in"
+                    % remote_field.field_name: [r["content_object"] for r in qs]
+                }
+            )
             for obj in objs:
                 items[(getattr(obj, remote_field.field_name),)] = obj
         else:
             preload = {}
             for result in qs:
-                preload.setdefault(result['content_type'], set())
+                preload.setdefault(result["content_type"], set())
                 preload[result["content_type"]].add(result["object_id"])
 
             for ct, obj_ids in preload.items():
@@ -328,15 +376,12 @@ class _TaggableManager(models.Manager):
 
         results = []
         for result in qs:
-            obj = items[
-                tuple(result[k] for k in lookup_keys)
-            ]
+            obj = items[tuple(result[k] for k in lookup_keys)]
             obj.similar_tags = result["n"]
             results.append(obj)
         return results
 
 
-@total_ordering
 class TaggableManager(RelatedField):
     # Field flags
     many_to_many = True
@@ -346,15 +391,21 @@ class TaggableManager(RelatedField):
 
     _related_name_counter = 0
 
-    def __init__(self, verbose_name=_("Tags"),
-                 help_text=_("A comma-separated list of tags."),
-                 through=None, blank=False, related_name=None, to=None,
-                 manager=_TaggableManager):
+    def __init__(
+        self,
+        verbose_name=_("Tags"),
+        help_text=_("A comma-separated list of tags."),
+        through=None,
+        blank=False,
+        related_name=None,
+        to=None,
+        manager=_TaggableManager,
+    ):
         self.through = through or TaggedItem
 
         rel = ManyToManyRel(self, to, related_name=related_name, through=self.through)
 
-        super(TaggableManager, self).__init__(
+        super().__init__(
             verbose_name=verbose_name,
             help_text=help_text,
             blank=blank,
@@ -368,37 +419,42 @@ class TaggableManager(RelatedField):
 
     def __get__(self, instance, model):
         if instance is not None and instance.pk is None:
-            raise ValueError("%s objects need to have a primary key value "
-                             "before you can access their tags." % model.__name__)
-        manager = self.manager(
+            raise ValueError(
+                "%s objects need to have a primary key value "
+                "before you can access their tags." % model.__name__
+            )
+        return self.manager(
             through=self.through,
             model=model,
             instance=instance,
-            prefetch_cache_name=self.name
+            prefetch_cache_name=self.name,
         )
-        return manager
 
     def deconstruct(self):
         """
         Deconstruct the object, used with migrations.
         """
-        name, path, args, kwargs = super(TaggableManager, self).deconstruct()
+        name, path, args, kwargs = super().deconstruct()
         # Remove forced kwargs.
-        for kwarg in ('serialize', 'null'):
+        for kwarg in ("serialize", "null"):
             del kwargs[kwarg]
         # Add arguments related to relations.
-        # Ref: https://github.com/alex/django-taggit/issues/206#issuecomment-37578676
+        # Ref: https://github.com/jazzband/django-taggit/issues/206#issuecomment-37578676
         rel = self.remote_field
-        if isinstance(rel.through, six.string_types):
-            kwargs['through'] = rel.through
+        if isinstance(rel.through, str):
+            kwargs["through"] = rel.through
         elif not rel.through._meta.auto_created:
-            kwargs['through'] = "%s.%s" % (rel.through._meta.app_label, rel.through._meta.object_name)
+            kwargs["through"] = "{}.{}".format(
+                rel.through._meta.app_label, rel.through._meta.object_name
+            )
 
         related_model = rel.model
-        if isinstance(related_model, six.string_types):
-            kwargs['to'] = related_model
+        if isinstance(related_model, str):
+            kwargs["to"] = related_model
         else:
-            kwargs['to'] = '%s.%s' % (related_model._meta.app_label, related_model._meta.object_name)
+            kwargs["to"] = "{}.{}".format(
+                related_model._meta.app_label, related_model._meta.object_name
+            )
 
         return name, path, args, kwargs
 
@@ -410,17 +466,21 @@ class TaggableManager(RelatedField):
         cls._meta.add_field(self)
         setattr(cls, name, self)
         if not cls._meta.abstract:
-            if isinstance(self.remote_field.model, six.string_types):
+            if isinstance(self.remote_field.model, str):
+
                 def resolve_related_class(cls, model, field):
                     field.remote_field.model = model
+
                 lazy_related_operation(
                     resolve_related_class, cls, self.remote_field.model, field=self
                 )
-            if isinstance(self.through, six.string_types):
+            if isinstance(self.through, str):
+
                 def resolve_related_class(cls, model, field):
                     self.through = model
                     self.remote_field.through = model
                     self.post_through_setup(cls)
+
                 lazy_related_operation(
                     resolve_related_class, cls, self.through, field=self
                 )
@@ -428,26 +488,30 @@ class TaggableManager(RelatedField):
                 self.post_through_setup(cls)
 
     def get_internal_type(self):
-        return 'ManyToManyField'
+        return "ManyToManyField"
 
     def post_through_setup(self, cls):
-        self.use_gfk = (
-            self.through is None or issubclass(self.through, CommonGenericTaggedItemBase)
+        self.use_gfk = self.through is None or issubclass(
+            self.through, CommonGenericTaggedItemBase
         )
 
         if not self.remote_field.model:
-            self.remote_field.model = self.through._meta.get_field("tag").remote_field.model
+            self.remote_field.model = self.through._meta.get_field(
+                "tag"
+            ).remote_field.model
 
         if self.use_gfk:
             tagged_items = GenericRelation(self.through)
-            tagged_items.contribute_to_class(cls, 'tagged_items')
+            tagged_items.contribute_to_class(cls, "tagged_items")
 
         for rel in cls._meta.local_many_to_many:
             if rel == self or not isinstance(rel, TaggableManager):
                 continue
             if rel.through == self.through:
-                raise ValueError('You can\'t have two TaggableManagers with the'
-                                 ' same through model.')
+                raise ValueError(
+                    "You can't have two TaggableManagers with the"
+                    " same through model."
+                )
 
     def save_form_data(self, instance, value):
         getattr(instance, self.name).set(*value)
@@ -456,24 +520,24 @@ class TaggableManager(RelatedField):
         defaults = {
             "label": capfirst(self.verbose_name),
             "help_text": self.help_text,
-            "required": not self.blank
+            "required": not self.blank,
         }
         defaults.update(kwargs)
         return form_class(**defaults)
 
-    def value_from_object(self, instance):
-        if instance.pk:
-            return self.through.objects.filter(**self.through.lookup_kwargs(instance))
-        return self.through.objects.none()
-
-    def related_query_name(self):
-        return self.model._meta.model_name
+    def value_from_object(self, obj):
+        if obj.pk is None:
+            return []
+        qs = self.through.objects.select_related("tag").filter(
+            **self.through.lookup_kwargs(obj)
+        )
+        return [ti.tag for ti in qs]
 
     def m2m_reverse_name(self):
-        return self.through._meta.get_field('tag').column
+        return self.through._meta.get_field("tag").column
 
     def m2m_reverse_field_name(self):
-        return self.through._meta.get_field('tag').name
+        return self.through._meta.get_field("tag").name
 
     def m2m_target_field_name(self):
         return self.model._meta.pk.name
@@ -483,8 +547,8 @@ class TaggableManager(RelatedField):
 
     def m2m_column_name(self):
         if self.use_gfk:
-            return self.through._meta.virtual_fields[0].fk_field
-        return self.through._meta.get_field('content_object').column
+            return self.through._meta.private_fields[0].fk_field
+        return self.through._meta.get_field("content_object").column
 
     def m2m_db_table(self):
         return self.through._meta.db_table
@@ -494,22 +558,30 @@ class TaggableManager(RelatedField):
 
     def _get_mm_case_path_info(self, direct=False, filtered_relation=None):
         pathinfos = []
-        linkfield1 = self.through._meta.get_field('content_object')
+        linkfield1 = self.through._meta.get_field("content_object")
         linkfield2 = self.through._meta.get_field(self.m2m_reverse_field_name())
         if direct:
             if VERSION < (2, 0):
                 join1infos = linkfield1.get_reverse_path_info()
                 join2infos = linkfield2.get_path_info()
             else:
-                join1infos = linkfield1.get_reverse_path_info(filtered_relation=filtered_relation)
-                join2infos = linkfield2.get_path_info(filtered_relation=filtered_relation)
+                join1infos = linkfield1.get_reverse_path_info(
+                    filtered_relation=filtered_relation
+                )
+                join2infos = linkfield2.get_path_info(
+                    filtered_relation=filtered_relation
+                )
         else:
             if VERSION < (2, 0):
                 join1infos = linkfield2.get_reverse_path_info()
                 join2infos = linkfield1.get_path_info()
             else:
-                join1infos = linkfield2.get_reverse_path_info(filtered_relation=filtered_relation)
-                join2infos = linkfield1.get_path_info(filtered_relation=filtered_relation)
+                join1infos = linkfield2.get_reverse_path_info(
+                    filtered_relation=filtered_relation
+                )
+                join2infos = linkfield1.get_path_info(
+                    filtered_relation=filtered_relation
+                )
         pathinfos.extend(join1infos)
         pathinfos.extend(join2infos)
         return pathinfos
@@ -521,33 +593,76 @@ class TaggableManager(RelatedField):
         linkfield = self.through._meta.get_field(self.m2m_reverse_field_name())
         if direct:
             if VERSION < (2, 0):
-                join1infos = [PathInfo(self.model._meta, opts, [from_field], self.remote_field, True, False)]
+                join1infos = [
+                    PathInfo(
+                        self.model._meta,
+                        opts,
+                        [from_field],
+                        self.remote_field,
+                        True,
+                        False,
+                    )
+                ]
                 join2infos = linkfield.get_path_info()
             else:
-                join1infos = [PathInfo(self.model._meta, opts, [from_field], self.remote_field, True, False, filtered_relation)]
-                join2infos = linkfield.get_path_info(filtered_relation=filtered_relation)
+                join1infos = [
+                    PathInfo(
+                        self.model._meta,
+                        opts,
+                        [from_field],
+                        self.remote_field,
+                        True,
+                        False,
+                        filtered_relation,
+                    )
+                ]
+                join2infos = linkfield.get_path_info(
+                    filtered_relation=filtered_relation
+                )
         else:
             if VERSION < (2, 0):
                 join1infos = linkfield.get_reverse_path_info()
-                join2infos = [PathInfo(opts, self.model._meta, [from_field], self, True, False)]
+                join2infos = [
+                    PathInfo(opts, self.model._meta, [from_field], self, True, False)
+                ]
             else:
-                join1infos = linkfield.get_reverse_path_info(filtered_relation=filtered_relation)
-                join2infos = [PathInfo(opts, self.model._meta, [from_field], self, True, False, filtered_relation)]
+                join1infos = linkfield.get_reverse_path_info(
+                    filtered_relation=filtered_relation
+                )
+                join2infos = [
+                    PathInfo(
+                        opts,
+                        self.model._meta,
+                        [from_field],
+                        self,
+                        True,
+                        False,
+                        filtered_relation,
+                    )
+                ]
         pathinfos.extend(join1infos)
         pathinfos.extend(join2infos)
         return pathinfos
 
     def get_path_info(self, filtered_relation=None):
         if self.use_gfk:
-            return self._get_gfk_case_path_info(direct=True, filtered_relation=filtered_relation)
+            return self._get_gfk_case_path_info(
+                direct=True, filtered_relation=filtered_relation
+            )
         else:
-            return self._get_mm_case_path_info(direct=True, filtered_relation=filtered_relation)
+            return self._get_mm_case_path_info(
+                direct=True, filtered_relation=filtered_relation
+            )
 
     def get_reverse_path_info(self, filtered_relation=None):
         if self.use_gfk:
-            return self._get_gfk_case_path_info(direct=False, filtered_relation=filtered_relation)
+            return self._get_gfk_case_path_info(
+                direct=False, filtered_relation=filtered_relation
+            )
         else:
-            return self._get_mm_case_path_info(direct=False, filtered_relation=filtered_relation)
+            return self._get_mm_case_path_info(
+                direct=False, filtered_relation=filtered_relation
+            )
 
     def get_joining_columns(self, reverse_join=False):
         if reverse_join:
@@ -556,9 +671,11 @@ class TaggableManager(RelatedField):
             return (("object_id", self.model._meta.pk.column),)
 
     def get_extra_restriction(self, where_class, alias, related_alias):
-        extra_col = self.through._meta.get_field('content_type').column
-        content_type_ids = [ContentType.objects.get_for_model(subclass).pk
-                            for subclass in _get_subclasses(self.model)]
+        extra_col = self.through._meta.get_field("content_type").column
+        content_type_ids = [
+            ContentType.objects.get_for_model(subclass).pk
+            for subclass in _get_subclasses(self.model)
+        ]
         return ExtraJoinRestriction(related_alias, extra_col, content_type_ids)
 
     def get_reverse_joining_columns(self):
@@ -566,7 +683,7 @@ class TaggableManager(RelatedField):
 
     @property
     def related_fields(self):
-        return [(self.through._meta.get_field('object_id'), self.model._meta.pk)]
+        return [(self.through._meta.get_field("object_id"), self.model._meta.pk)]
 
     @property
     def foreign_related_fields(self):
@@ -576,6 +693,8 @@ class TaggableManager(RelatedField):
 def _get_subclasses(model):
     subclasses = [model]
     for field in model._meta.get_fields():
-        if isinstance(field, OneToOneRel) and getattr(field.field.remote_field, "parent_link", None):
+        if isinstance(field, OneToOneRel) and getattr(
+            field.field.remote_field, "parent_link", None
+        ):
             subclasses.extend(_get_subclasses(field.related_model))
     return subclasses
