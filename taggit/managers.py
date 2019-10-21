@@ -345,10 +345,6 @@ class _TaggableManager(models.Manager):
         qs = qs.annotate(n=models.Count("pk"))
         qs = qs.exclude(**lookup_kwargs)
         qs = qs.filter(tag__in=self.all())
-        if prefetch_related:
-            qs = qs.prefetch_related(*prefetch_related)
-        if select_related:
-            qs = qs.prefetch_related(*select_related)
         qs = qs.order_by("-n")
         if limit:
             qs = qs[:limit]
@@ -377,7 +373,12 @@ class _TaggableManager(models.Manager):
 
             for ct, obj_ids in preload.items():
                 ct = ContentType.objects.get_for_id(ct)
-                for obj in ct.model_class()._default_manager.filter(pk__in=obj_ids):
+                objects_qs = ct.model_class()._default_manager.filter(pk__in=obj_ids)
+                if prefetch_related:
+                    objects_qs = objects_qs.prefetch_related(*prefetch_related)
+                if select_related:
+                    objects_qs = objects_qs.select_related(*select_related)
+                for obj in objects_qs:
                     items[(ct.pk, obj.pk)] = obj
 
         results = []
