@@ -338,13 +338,17 @@ class _TaggableManager(models.Manager):
         return queryset
 
     @require_instance_manager
-    def similar_objects(self, limit=0):
+    def similar_objects(self, limit=0, prefetch_related=None, select_related=None):
         lookup_kwargs = self._lookup_kwargs()
         lookup_keys = sorted(lookup_kwargs)
         qs = self.through.objects.values(*lookup_kwargs.keys())
         qs = qs.annotate(n=models.Count("pk"))
         qs = qs.exclude(**lookup_kwargs)
         qs = qs.filter(tag__in=self.all())
+        if prefetch_related:
+            qs = qs.prefetch_related(*prefetch_related)
+        if select_related:
+            qs = qs.prefetch_related(*select_related)
         qs = qs.order_by("-n")
         if limit:
             qs = qs[:limit]
