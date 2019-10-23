@@ -7,6 +7,10 @@ UNRELEASED
 * Moved TaggedItemBase.tags_for() to ItemBase.
 * Removed support for end-of-life Django 2.0.
 
+1.1.0.1 (2019-10-23)
+~~~~~~~~~~~~~~~~~~~~
+* Added option to ``limit``, ``prefetch_related`` and ``select_related`` objects returned by ``_TaggableManager.similar_objects``.
+
 1.1.0 (2019-03-22)
 ~~~~~~~~~~~~~~~~~~
 
