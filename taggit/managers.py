@@ -47,7 +47,7 @@ class ExtraJoinRestriction:
         self.alias = change_map.get(self.alias, self.alias)
 
     def clone(self):
-        return self.__class__(self.alias, self.col, self.content_types[:])
+        return type(self)(self.alias, self.col, self.content_types[:])
 
 
 class _TaggableManager(models.Manager):
@@ -73,7 +73,7 @@ class _TaggableManager(models.Manager):
             raise ValueError("Custom queryset can't be used for this lookup.")
 
         instance = instances[0]
-        db = self._db or router.db_for_read(instance.__class__, instance=instance)
+        db = self._db or router.db_for_read(type(instance), instance=instance)
 
         fieldname = (
             "object_id"
@@ -124,10 +124,12 @@ class _TaggableManager(models.Manager):
         return self.through.lookup_kwargs(self.instance)
 
     @require_instance_manager
-    def add(self, *tags):
+    def add(self, *tags, **kwargs):
+        tag_kwargs = kwargs.pop("tag_kwargs", {})
+
         db = router.db_for_write(self.through, instance=self.instance)
 
-        tag_objs = self._to_tag_model_instances(tags)
+        tag_objs = self._to_tag_model_instances(tags, tag_kwargs)
         new_ids = {t.pk for t in tag_objs}
 
         # NOTE: can we hardcode 'tag_id' here or should the column name be got
@@ -165,7 +167,7 @@ class _TaggableManager(models.Manager):
             using=db,
         )
 
-    def _to_tag_model_instances(self, tags):
+    def _to_tag_model_instances(self, tags, tag_kwargs):
         """
         Takes an iterable containing either strings, tag objects, or a mixture
         of both and returns set of tag objects.
@@ -205,19 +207,19 @@ class _TaggableManager(models.Manager):
         else:
             # If str_tags has 0 elements Django actually optimizes that to not
             # do a query.  Malcolm is very smart.
-            existing = manager.filter(name__in=str_tags)
-            tags_to_create = str_tags - {t.name for t in existing}
+            existing = manager.filter(name__in=str_tags, **tag_kwargs)
+
+            tags_to_create = str_tags - set(t.name for t in existing)
 
         tag_objs.update(existing)
 
         for new_tag in tags_to_create:
             if case_insensitive:
-                tag, created = manager.get_or_create(
-                    name__iexact=new_tag, defaults={"name": new_tag}
-                )
+                lookup = {"name__iexact": new_tag, **tag_kwargs}
             else:
-                tag, created = manager.get_or_create(name=new_tag)
+                lookup = {"name": new_tag, **tag_kwargs}
 
+            tag, create = manager.get_or_create(**lookup, defaults={"name": new_tag})
             tag_objs.add(tag)
 
         return tag_objs
@@ -237,16 +239,21 @@ class _TaggableManager(models.Manager):
         then all existing tags are removed (using `.clear()`) and the new tags
         added. Otherwise, only those tags that are not present in the args are
         removed and any new tags added.
+
+        Any kwarg apart from 'clear' will be passed when adding tags.
+
         """
         db = router.db_for_write(self.through, instance=self.instance)
+
         clear = kwargs.pop("clear", False)
+        tag_kwargs = kwargs.pop("tag_kwargs", {})
 
         if clear:
             self.clear()
-            self.add(*tags)
+            self.add(*tags, **kwargs)
         else:
             # make sure we're working with a collection of a uniform type
-            objs = self._to_tag_model_instances(tags)
+            objs = self._to_tag_model_instances(tags, tag_kwargs)
 
             # get the existing tag strings
             old_tag_strs = set(
@@ -263,7 +270,7 @@ class _TaggableManager(models.Manager):
                     new_objs.append(obj)
 
             self.remove(*old_tag_strs)
-            self.add(*new_objs)
+            self.add(*new_objs, **kwargs)
 
     @require_instance_manager
     def remove(self, *tags):

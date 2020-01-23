@@ -106,7 +106,7 @@ Custom tag
 ~~~~~~~~~~
 
 When providing a custom ``Tag`` model it should be a ``ForeignKey`` to your tag
-model named ``"tag"``:
+model named ``"tag"``. If your custom ``Tag`` model has extra parameters you want to initialize during setup, you can do so by passing it along via the ``tag_kwargs`` parameter of ``TaggableManager.add``. For example ``my_food.tags.add("tag_name1", "tag_name2", tag_kwargs={"my_field":3})``:
 
   .. code-block:: python
 
@@ -134,9 +134,11 @@ model named ``"tag"``:
         # example Food and Drink.
 
         # Here is where you provide your custom Tag class.
-        tag = models.ForeignKey(MyCustomTag,
-                                related_name="%(app_label)s_%(class)s_items",
-                                on_delete=models.CASCADE)
+        tag = models.ForeignKey(
+            MyCustomTag,
+            on_delete=models.CASCADE,
+            related_name="%(app_label)s_%(class)s_items",
+        )
 
 
     class Food(models.Model):
