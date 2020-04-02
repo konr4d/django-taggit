@@ -38,7 +38,7 @@ class TagBase(models.Model):
             # with a multi-master setup, theoretically we could try to
             # write and rollback on different DBs
             kwargs["using"] = using
-            # Be oportunistic and try to save the tag, this should work for
+            # Be opportunistic and try to save the tag, this should work for
             # most cases ;)
             try:
                 with transaction.atomic(using=using):
@@ -57,7 +57,7 @@ class TagBase(models.Model):
                 slug = self.slugify(self.name, i)
                 if slug not in slugs:
                     self.slug = slug
-                    # We purposely ignore concurrecny issues here for now.
+                    # We purposely ignore concurrency issues here for now.
                     # (That is, till we found a nice solution...)
                     return super().save(*args, **kwargs)
                 i += 1
